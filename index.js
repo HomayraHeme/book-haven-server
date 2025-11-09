@@ -53,6 +53,11 @@ async function run() {
         })
 
 
+        app.get('/latest-books', async (req, res) => {
+            const cursor = booksCollection.find().sort({ created_at: -1 }).limit(6);
+            const result = await cursor.toArray();
+            res.send(result)
+        })
 
 
 
