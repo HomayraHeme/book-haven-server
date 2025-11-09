@@ -37,6 +37,22 @@ async function run() {
 
         })
 
+        app.get('/books', async (req, res) => {
+
+            console.log(req.query)
+            const email = req.query.email;
+            const query = {}
+            if (email) {
+                query.email = email;
+            }
+
+            const cursor = booksCollection.find(query);
+
+            const result = await cursor.toArray();
+            res.send(result);
+        })
+
+
 
 
 
