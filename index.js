@@ -75,6 +75,26 @@ async function run() {
         })
 
 
+        app.patch('/books/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedBooks = req.body;
+            const query = { _id: new ObjectId(id) }
+            const update = {
+                $set: {
+                    title: updatedBooks.title,
+                    author: updatedBooks.author,
+                    genre: updatedBooks.genre,
+                    rating: updatedBooks.rating,
+                    summary: updatedBooks.summary,
+                    cover: updatedBooks.cover,
+                    image: updatedBooks.image
+                }
+            }
+            const result = await booksCollection.updateOne(query, update)
+            res.send(result);
+        })
+
+
 
     } finally {
     }
