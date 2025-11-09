@@ -66,6 +66,14 @@ async function run() {
             res.send(result);
         })
 
+        app.post('/books', verifyFirebaseToken, async (req, res) => {
+            console.log('headers in the post', req.headers);
+            const newProduct = req.body;
+            const result = await booksCollection.insertOne(newProduct)
+            res.send(result);
+
+        })
+
 
 
     } finally {
