@@ -1,141 +1,186 @@
-const express = require('express')
+const express = require('express');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
-const app = express()
-const port = process.env.port || 3000
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const admin = require("firebase-admin");
+
+const app = express();
+const port = process.env.PORT || 3000;
 
 
+const serviceAccount = require("./book-haven-firebase-adminsdk.json");
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
 
-// middleware
+
 app.use(cors());
-app.use(express.json())
+app.use(express.json());
 
-// zk62ZiUhySe2tdIh
-// bookHavenUser
 
-const uri = "mongodb+srv://bookHavenUser:zk62ZiUhySe2tdIh @cluster0.qswuexk.mongodb.net/?appName=Cluster0";
+const verifyFirebaseToken = async (req, res, next) => {
+    const authorization = req.headers.authorization;
+    if (!authorization) return res.status(401).send({ message: 'Unauthorized access' });
 
-async function run() {
+    const token = authorization.split(' ')[1];
     try {
-        await client.connect();
-        const db = client.db('book_db');
-        const booksCollection = db.collection('books');
-        const usersCollection = db.collection('users');
-
-        app.post('/users', async (req, res) => {
-            const newUser = req.body;
-            const email = req.body.email;
-            const query = { email: email }
-            const existingUser = await usersCollection.findOne(query);
-            if (existingUser) {
-                res.send('user already exist.do not need to insert again')
-            }
-            else {
-                const result = await usersCollection.insertOne(newUser)
-                res.send(result);
-            }
-
-        })
-
-        app.get('/books', async (req, res) => {
-
-            console.log(req.query)
-            const email = req.query.email;
-            const query = {}
-            if (email) {
-                query.email = email;
-            }
-
-            const cursor = booksCollection.find(query);
-
-            const result = await cursor.toArray();
-            res.send(result);
-        })
-
-
-        app.get('/latest-books', async (req, res) => {
-            const cursor = booksCollection.find().sort({ created_at: -1 }).limit(6);
-            const result = await cursor.toArray();
-            res.send(result)
-        })
-
-        app.get('/books/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) }
-            const result = await booksCollection.findOne(query)
-            res.send(result);
-        })
-
-        app.post('/books', verifyFirebaseToken, async (req, res) => {
-            console.log('headers in the post', req.headers);
-            const newProduct = req.body;
-            const result = await booksCollection.insertOne(newProduct)
-            res.send(result);
-
-        })
-
-
-        app.patch('/books/:id', async (req, res) => {
-            const id = req.params.id;
-            const updatedBooks = req.body;
-            const query = { _id: new ObjectId(id) }
-            const update = {
-                $set: {
-                    title: updatedBooks.title,
-                    author: updatedBooks.author,
-                    genre: updatedBooks.genre,
-                    rating: updatedBooks.rating,
-                    summary: updatedBooks.summary,
-                    cover: updatedBooks.cover,
-                    image: updatedBooks.image
-                }
-            }
-            const result = await booksCollection.updateOne(query, update)
-            res.send(result);
-        })
-
-        app.delete('/books/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) }
-            const result = await booksCollection.deleteOne(query);
-            res.send(result);
-        })
-
-
-
-    } finally {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.token_email = decoded.email;
+        next();
+    } catch (error) {
+        return res.status(401).send({ message: 'Unauthorized access' });
     }
+};
 
 
-}
-run().catch(console.dir)
-
+const uri = "mongodb+srv://bookHavenUser:zk62ZiUhySe2tdIh@cluster0.qswuexk.mongodb.net/?appName=Cluster0";
 const client = new MongoClient(uri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-    }
+    serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
 
 async function run() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
-        // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        const db = client.db('bookHavenUser');
+        const booksCollection = db.collection('books');
+        const usersCollection = db.collection('users');
+
+
+        app.get('/', (req, res) => res.send("Book server is running"));
+
+
+        app.post('/users', async (req, res) => {
+            const newUser = req.body;
+            const existingUser = await usersCollection.findOne({ email: newUser.email });
+            if (existingUser) return res.send('User already exists');
+
+            const result = await usersCollection.insertOne(newUser);
+            res.send(result);
+        });
+
+
+        app.get('/books', async (req, res) => {
+            try {
+                const sortOrder = req.query.sort === 'asc' ? 1 : -1;
+                const books = await booksCollection.find().sort({ rating: sortOrder }).toArray();
+                res.send(books);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: 'Failed to fetch books' });
+            }
+        });
+
+
+
+
+        app.get('/latest-books', async (req, res) => {
+            const latestBooks = await booksCollection.find().sort({ created_at: -1 }).limit(6).toArray();
+            res.send(latestBooks);
+        });
+
+
+        app.get('/myBooks', verifyFirebaseToken, async (req, res) => {
+            const userEmail = req.token_email;
+            const books = await booksCollection.find({ userEmail }).toArray();
+            res.send(books);
+        });
+
+
+        app.get('/book-details/:id', verifyFirebaseToken, async (req, res) => {
+            const id = req.params.id;
+            const book = await booksCollection.findOne({ _id: new ObjectId(id) });
+            if (!book) return res.status(404).send({ message: 'Book not found' });
+            res.send(book);
+        });
+
+
+        app.post('/books', verifyFirebaseToken, async (req, res) => {
+            const ratingValue = parseFloat(req.body.rating);
+
+            const newBook = {
+                ...req.body,
+                rating: isNaN(ratingValue) ? 0 : ratingValue,
+                userEmail: req.token_email,
+                created_at: new Date()
+            };
+
+            try {
+                const result = await booksCollection.insertOne(newBook);
+
+                if (result.acknowledged) {
+                    res.send({ insertedId: result.insertedId, message: "Book added successfully!" });
+                } else {
+                    res.status(400).send({ message: "Failed to insert book" });
+                }
+
+            } catch (error) {
+                console.error("Error adding book:", error);
+                res.status(500).send({ message: 'Failed to add book' });
+            }
+        });
+
+        const { ObjectId } = require('mongodb');
+
+        app.patch('/books/:id', verifyFirebaseToken, async (req, res) => {
+            const id = req.params.id;
+            const updatedBook = req.body;
+            const userEmail = req.token_email;
+
+            const ratingValue = parseFloat(updatedBook.rating);
+            const newRating = isNaN(ratingValue) ? 0 : ratingValue;
+
+            try {
+
+                const book = await booksCollection.findOne({ _id: new ObjectId(id) });
+
+                if (!book) return res.status(404).send({ message: 'Book not found' });
+
+                if (book.userEmail !== userEmail) return res.status(403).send({ message: 'Not allowed to update this book' });
+
+
+                const updateDoc = {
+                    $set: {
+                        title: updatedBook.title,
+                        author: updatedBook.author,
+                        genre: updatedBook.genre,
+                        rating: newRating,
+                        summary: updatedBook.summary,
+                        coverImage: updatedBook.image || updatedBook.coverImage,
+                        lastUpdated: new Date()
+                    },
+                };
+
+
+                const result = await booksCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    updateDoc
+                );
+
+
+                res.send(result);
+
+            } catch (error) {
+                console.error("Error updating book:", error);
+                res.status(500).send({ message: 'Failed to update book' });
+            }
+        });
+
+
+        app.delete('/books/:id', verifyFirebaseToken, async (req, res) => {
+            const id = req.params.id;
+            const userEmail = req.token_email;
+
+            const book = await booksCollection.findOne({ _id: new ObjectId(id) });
+            if (!book) return res.status(404).send({ message: 'Book not found' });
+            if (book.userEmail !== userEmail) return res.status(403).send({ message: 'Not allowed to delete this book' });
+
+            const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
+        });
+
     } finally {
-        // Ensures that the client will close when you finish/error
-        await client.close();
     }
 }
+
 run().catch(console.dir);
 
-app.get('/', (req, res) => {
-    res.send('book haven is running')
-})
-
-app.listen(port, () => {
-    console.log(`book server app listening on port ${port}`)
-})
+app.listen(port, () => console.log(`Book server app listening on port ${port}`));
