@@ -41,7 +41,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        await client.connect();
+        // await client.connect();
         const db = client.db('bookHavenUser');
         const booksCollection = db.collection('books');
         const usersCollection = db.collection('users');
@@ -57,6 +57,32 @@ async function run() {
             res.send(result);
         });
 
+        app.patch("/users/profile", verifyFirebaseToken, async (req, res) => {
+    const { displayName, photoURL } = req.body;
+    const userEmail = req.token_email; // from Firebase token
+
+    try {
+        const updateDoc = {
+            $set: {
+                displayName: displayName || null,
+                photoURL: photoURL || null,
+                updatedAt: new Date(),
+            },
+        };
+
+        const result = await usersCollection.updateOne(
+            { email: userEmail },
+            updateDoc,
+            { upsert: true } // in case the user document doesn't exist
+        );
+
+        res.send({ success: true, message: "Profile updated successfully!" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send({ success: false, message: "Failed to update profile" });
+    }
+});
+
 
         app.get('/books', async (req, res) => {
             try {
@@ -71,9 +97,11 @@ async function run() {
 
 
         app.get('/latest-books', async (req, res) => {
-            const latestBooks = await booksCollection.find().sort({ created_at: -1 }).limit(6).toArray();
-            res.send(latestBooks);
-        });
+    const limit = parseInt(req.query.limit) || 8; // default 8
+    const latestBooks = await booksCollection.find().sort({ created_at: -1 }).limit(limit).toArray();
+    res.send(latestBooks);
+});
+
 
 
         app.get('/myBooks', verifyFirebaseToken, async (req, res) => {
@@ -83,7 +111,7 @@ async function run() {
         });
 
 
-        app.get('/book-details/:id', verifyFirebaseToken, async (req, res) => {
+        app.get('/book-details/:id', async (req, res) => {
             const id = req.params.id;
             const book = await booksCollection.findOne({ _id: new ObjectId(id) });
             if (!book) return res.status(404).send({ message: 'Book not found' });
