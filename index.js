@@ -96,11 +96,10 @@ async function run() {
         });
 
 
-        app.get('/latest-books', async (req, res) => {
-    const limit = parseInt(req.query.limit) || 8; // default 8
-    const latestBooks = await booksCollection.find().sort({ created_at: -1 }).limit(limit).toArray();
-    res.send(latestBooks);
-});
+         app.get('/latest-books', async (req, res) => {
+            const latestBooks = await booksCollection.find().sort({ created_at: -1 }).limit(8).toArray();
+            res.send(latestBooks);
+        });
 
 
 
